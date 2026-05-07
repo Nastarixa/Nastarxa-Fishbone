@@ -6,6 +6,23 @@ Designed for animators who want a fast and visual way to experiment with spacing
 
 ---
 
+# 🎯 Purpose
+
+This tool is designed to make animation spacing:
+- easier to read
+- faster to iterate
+- visually understandable
+- more experimental and expressive
+
+Useful for:
+- sprite animation
+- pixel art animation
+- keyframe timing
+- spacing experiments
+- hand-drawn workflows
+
+---
+
 # ✨ Features
 
 - **🎞 Visual Timeline Preview**  
@@ -151,23 +168,6 @@ Rules may be separated using:
 | `Nastarxa Fishbone Inbetween Generator.ahk` | Main script |
 | `Fishbone Examples.ini` | Saved examples and notes |
 | `Fishbone.ico` | Tray icon |
-
----
-
-# 🎯 Purpose
-
-This tool is designed to make animation spacing:
-- easier to read
-- faster to iterate
-- visually understandable
-- more experimental and expressive
-
-Useful for:
-- sprite animation
-- pixel art animation
-- keyframe timing
-- spacing experiments
-- hand-drawn workflows
 
 ---
 
