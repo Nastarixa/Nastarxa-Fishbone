@@ -6,23 +6,6 @@ Designed for animators who want a fast and visual way to experiment with spacing
 
 ---
 
-# 🎯 Purpose
-
-This tool is designed to make animation spacing:
-- easier to read
-- faster to iterate
-- visually understandable
-- more experimental and expressive
-
-Useful for:
-- sprite animation
-- pixel art animation
-- keyframe timing
-- spacing experiments
-- hand-drawn workflows
-
----
-
 # ✨ Features
 
 - **🎞 Visual Timeline Preview**  
@@ -48,6 +31,23 @@ Useful for:
 
 - **🪟 Resizable Interface**  
   Window and canvas automatically adapt to different sizes.
+
+---
+
+# 🎯 Purpose
+
+This tool is designed to make animation spacing:
+- easier to read
+- faster to iterate
+- visually understandable
+- more experimental and expressive
+
+Useful for:
+- sprite animation
+- pixel art animation
+- keyframe timing
+- spacing experiments
+- hand-drawn workflows
 
 ---
 
