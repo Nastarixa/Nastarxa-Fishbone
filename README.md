@@ -124,7 +124,6 @@ Automatically place an inbetween between its neighbors.
 Rules may be separated using:
 - commas
 - new lines
-- mixed formatting
 
 ---
 
