@@ -687,8 +687,9 @@ RedrawCanvas(g) {
             else
                 fCount += 1
         }
-        pIdx := 0, fIdx := 0
+        pIdx := 0, fIdx := 0, seqIdx := 0
         for placement in plan.placements {
+            seqIdx += 1
             leftX := PosToX(s, placement.left)
             nodeX := PosToX(s, placement.pos)
             rightX := PosToX(s, placement.right)
@@ -701,8 +702,8 @@ RedrawCanvas(g) {
                 branchPen := GDI.CreatePen(GDI.LerpColor(0xFF99EEFF, 0xFF7EC8E3, t), 2)
                 fIdx += 1
             }
-            arcHeight := 18 + placement.depth * 12
-            above := Mod(placement.depth, 2) = 1
+            arcHeight := 10 + placement.depth * 12 + (seqIdx - 1) * 5
+            above := placement.stage != "follow"
             DrawBranch(pGraphics, branchPen, baseY, leftX, nodeX, rightX, arcHeight, above)
             GDI.DeletePen(branchPen)
         }
@@ -762,12 +763,47 @@ UpdateOutput(g, plan, s) {
             text .= " -> "
     }
 
-    g.output.Value := text
+    g.lastOutputText := text
 }
 
-CopyOutput(g) {
-    A_Clipboard := g.output.Value
-    TrayTip("Timeline", "Copied to clipboard")
+OpenOutputGui(mainGui) {
+    static outputGui := 0
+
+    if IsObject(outputGui) {
+        try {
+            outputGui.outputEdit.Value := mainGui.HasProp("lastOutputText") ? mainGui.lastOutputText : ""
+            outputGui.Show()
+            WinActivate(outputGui.Hwnd)
+        }
+        return
+    }
+
+    outputGui := Gui("+Owner" mainGui.Hwnd " +Resize", "Generated Output")
+    outputGui.BackColor := "25282E"
+    outputGui.SetFont("s10", "Segoe UI")
+    outputGui.MarginX := 14
+    outputGui.MarginY := 14
+
+    outputGui.AddText("x14 y12 cFFFFFF", "Generated Output")
+
+    outputGui.outputEdit := outputGui.AddEdit(
+        "x14 y36 w560 h300 ReadOnly Multi Background1E2127 cFFFFFF",
+        mainGui.HasProp("lastOutputText") ? mainGui.lastOutputText : ""
+    )
+
+    outputGui.btnCopy := outputGui.AddButton(
+        "x14 y348 w100 h30",
+        "📋 Copy"
+    )
+
+    outputGui.btnCopy.OnEvent("Click", (*) => (
+        A_Clipboard := outputGui.outputEdit.Value,
+        TrayTip("Timeline", "Copied to clipboard")
+    ))
+
+    outputGui.OnEvent("Close", (*) => outputGui := 0)
+
+    outputGui.Show("w590 h410 Center")
 }
 
 ShowGuide() {
@@ -947,11 +983,6 @@ OpenExamplesGui(mainGui) {
         ""
     )
 
-    eg.status := eg.AddText(
-        "x14 y520 w556 h24 cA0A0A0",
-        "Ready"
-    )
-
     eg.list.OnEvent("Change", (*) => (
         eg.nameEdit.Value := eg.list.Text,
         eg.rulesEdit.Value := LoadExample(eg.list.Text),
@@ -1029,9 +1060,15 @@ OpenTimelineGui() {
         "📂 Examples"
     )
 
+
+    g.btnOutput := g.AddButton(
+        "x195 yp w100 h28",
+        "📄 Output"
+    )
+
     g.showLines := true
     g.btnLines := g.AddButton(
-        "x195 yp w65 h28",
+        "x300 yp w65 h28",
         "🔍 Lines"
     )
     g.btnLines.OnEvent("Click", (*) => (
@@ -1059,25 +1096,6 @@ OpenTimelineGui() {
         "x14 y232 w620 h220 Background1E2127"
     )
 
-    g.AddText(
-        "x14 y462 cFFFFFF",
-        "Generated Output"
-    )
-
-    g.output := g.AddEdit(
-        "x14 y486 w620 h120 ReadOnly Multi Background1E2127 cFFFFFF"
-    )
-
-    g.btnCopy := g.AddButton(
-        "x14 y614 w100 h30",
-        "📋 Copy"
-    )
-
-    g.status := g.AddText(
-        "x126 y620 w510 c909090",
-        "Ready"
-    )
-
     g.priorityRules.OnEvent(
         "Change",
         (*) => (
@@ -1096,9 +1114,9 @@ OpenTimelineGui() {
         (*) => OpenExamplesGui(g)
     )
 
-    g.btnCopy.OnEvent(
+    g.btnOutput.OnEvent(
         "Click",
-        (*) => CopyOutput(g)
+        (*) => OpenOutputGui(g)
     )
 
     g.OnEvent(
@@ -1113,7 +1131,7 @@ OpenTimelineGui() {
 
     g._initialSetup := true
 
-    g.Show("w650 h670 Center")
+    g.Show("w650 h470 Center")
 
     g._initialSetup := false
 
@@ -1134,12 +1152,8 @@ OnGuiSize(g, minMax, aW, aH) {
         canvasH := aH - 310
         if canvasH < 160
             canvasH := 160
-        outputH := aH - canvasH - 200
-        if outputH < 100
-            outputH := 100
         g.priorityRules.Move(,, newW, 80)
         g.canvas.Move(,, newW, canvasH)
-        g.output.Move(,, newW, outputH)
         RedrawCanvas(g)
     }
 }
