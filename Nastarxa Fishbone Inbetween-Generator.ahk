@@ -6,6 +6,8 @@ global _ALLOWED := [50, 66, 33, 25, 75, 40, 60]
 global _canvasMap := Map()
 global _EXAMPLES_FILE := A_ScriptDir "\Fishbone Examples.ini"
 
+OpenTimelineGui()
+
 ^F1::OpenTimelineGui()
 
 TrayTip("Nastarxa Fishbone", "Press Ctrl+F1 to open the timeline")
@@ -787,7 +789,7 @@ OpenOutputGui(mainGui) {
     outputGui.AddText("x14 y12 cFFFFFF", "Generated Output")
 
     outputGui.outputEdit := outputGui.AddEdit(
-        "x14 y36 w560 h300 ReadOnly Multi Background1E2127 cFFFFFF",
+        "x14 y36 w560 h300 ReadOnly Multi BackgroundFFFFFF c000000",
         mainGui.HasProp("lastOutputText") ? mainGui.lastOutputText : ""
     )
 
@@ -942,7 +944,7 @@ OpenExamplesGui(mainGui) {
     eg.AddText("x14 y12 cFFFFFF", "Saved Examples")
 
     eg.list := eg.AddListBox(
-        "x14 y36 w220 h240 Background1E2127 cFFFFFF"
+        "x14 y36 w220 h240 BackgroundFFFFFF c000000"
     )
 
     eg.btnLoad := eg.AddButton(
@@ -965,21 +967,26 @@ OpenExamplesGui(mainGui) {
     eg.AddText("x" rightX " y12 cFFFFFF", "Example Name")
 
     eg.nameEdit := eg.AddEdit(
-        "x" rightX " y36 w320 h28 Background1E2127 cFFFFFF",
+        "x" rightX " y36 w320 h28 BackgroundFFFFFF c000000",
         ""
     )
 
     eg.AddText("x" rightX " y74 cFFFFFF", "Rules")
 
     eg.rulesEdit := eg.AddEdit(
-        "x" rightX " y98 w320 h260 Multi WantTab Background1E2127 cFFFFFF",
+        "x" rightX " y98 w320 h260 Multi WantTab BackgroundFFFFFF c000000",
         mainGui.priorityRules.Value
     )
 
     eg.AddText("x" rightX " y370 cFFFFFF", "Notes")
 
     eg.notesEdit := eg.AddEdit(
-        "x" rightX " y394 w320 h110 Multi Background1E2127 cFFFFFF",
+        "x" rightX " y394 w320 h110 Multi BackgroundFFFFFF c000000",
+        ""
+    )
+
+    eg.status := eg.AddText(
+        "x" rightX " y514 w320 c909090",
         ""
     )
 
@@ -1078,7 +1085,7 @@ OpenTimelineGui() {
     ))
 
     g.priorityRules := g.AddEdit(
-        "x14 y74 w620 h96 Multi WantTab Background1E2127 cFFFFFF",
+        "x14 y74 w620 h96 Multi WantTab BackgroundFFFFFF c000000",
         "4_f=Auto`r`n3_f=Auto`r`n1_f=Auto`r`n2_f=Auto"
     )
 
@@ -1149,7 +1156,7 @@ OnGuiSize(g, minMax, aW, aH) {
         newW := aW - 20
         if newW < 400
             newW := 400
-        canvasH := aH - 310
+        canvasH := aH - 250
         if canvasH < 160
             canvasH := 160
         g.priorityRules.Move(,, newW, 80)
