@@ -3,7 +3,6 @@
 TraySetIcon "Fishbone.ico"
 
 global _ALLOWED := [50, 66, 33, 25, 75, 40, 60]
-global _canvasMap := Map()
 global _EXAMPLES_FILE := A_ScriptDir "\Fishbone Examples.ini"
 
 OpenTimelineGui()
@@ -11,6 +10,7 @@ OpenTimelineGui()
 ^F1::OpenTimelineGui()
 
 TrayTip("Nastarxa Fishbone", "Press Ctrl+F1 to open the timeline")
+OnExit((*) => GDI.Stop())
 
 class GDI {
     static token := 0, pFamily := 0
@@ -118,6 +118,7 @@ class GDI {
     }
 
     static DrawString(pGraphics, text, x, y, w, h, pBrush, fontSize := 10) {
+        if text = "" || !pBrush
         if text = "" || !pBrush
             return
         pFamily := this.GetFontFamily()
@@ -852,7 +853,7 @@ ShowGuide() {
 
     guideGui.SetFont("s9", "Segoe UI")
     guideGui.AddEdit(
-        "xm w540 h170 ReadOnly -VScroll Background1E2127 cFFFFFF",
+        "xm w540 h170 ReadOnly -VScroll BackgroundFFFFFF c000000",
         formatText
     )
 
@@ -877,7 +878,7 @@ ShowGuide() {
 
     guideGui.SetFont("s9", "Segoe UI")
     guideGui.AddEdit(
-        "xm w540 h138 ReadOnly -VScroll Background1E2127 cC8E6C9",
+        "xm w540 h138 ReadOnly -VScroll BackgroundFFFFFF c000000",
         priorityText
     )
 
@@ -899,7 +900,7 @@ ShowGuide() {
 
     guideGui.SetFont("s9", "Segoe UI")
     guideGui.AddEdit(
-        "xm w540 h90 ReadOnly -VScroll Background1E2127 cBBDEFB",
+        "xm w540 h90 ReadOnly -VScroll BackgroundFFFFFF c000000",
         followText
     )
 
@@ -1105,10 +1106,7 @@ OpenTimelineGui() {
 
     g.priorityRules.OnEvent(
         "Change",
-        (*) => (
-            RedrawCanvas(g),
-            g.status.Text := "🎞 Timeline updated"
-        )
+        (*) => RedrawCanvas(g)
     )
 
     g.btnGuide.OnEvent(
@@ -1129,7 +1127,6 @@ OpenTimelineGui() {
     g.OnEvent(
         "Close",
         (*) => (
-            CanvasCleanup(g.canvas.Hwnd),
             guiObj := 0
         )
     )
@@ -1141,8 +1138,6 @@ OpenTimelineGui() {
     g.Show("w650 h470 Center")
 
     g._initialSetup := false
-
-    _canvasMap[g.canvas.Hwnd] := g
 
     RedrawCanvas(g)
 }
@@ -1165,9 +1160,4 @@ OnGuiSize(g, minMax, aW, aH) {
     }
 }
 
-CanvasCleanup(hwnd) {
-    global _canvasMap
-    if _canvasMap.Has(hwnd)
-        _canvasMap.Delete(hwnd)
-}
 
