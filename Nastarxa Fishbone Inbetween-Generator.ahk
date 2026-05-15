@@ -230,20 +230,22 @@ ParsePriorityRules(text) {
         }
     }
     for line in expanded {
-        if RegExMatch(line, "i)^\s*(\d+)\s*_\s*([A-Z0-9 ]+)\s*>\s*([A-Z0-9 ]+)\s*=\s*(\d+|AUTO)\s*$", &m) {
+        if RegExMatch(line, "i)^\s*(\d+)\s*_\s*([A-Z0-9 ]+)\s*>\s*([A-Z0-9 ]+)\s*=\s*(\d+|AUTO(?:-HIDE)?)\s*$", &m) {
             targetIdx := Integer(m[1])
             leftRef := NormalizeRefToken(m[2])
             rightRef := NormalizeRefToken(m[3])
             pctRaw := StrUpper(Trim(m[4]))
-            pct := pctRaw = "AUTO" ? "AUTO" : Integer(pctRaw)
+            isHide := InStr(pctRaw, "-HIDE")
+            pct := isHide ? "AUTO" : (pctRaw = "AUTO" ? "AUTO" : Integer(pctRaw))
             if targetIdx >= 1 && leftRef != "" && rightRef != "" && leftRef != rightRef && (pct = "AUTO" || IsAllowed(pct))
-                rules.Push({mode: "priority", targetIdx: targetIdx, leftRef: leftRef, rightRef: rightRef, pct: pct, raw: line})
+                rules.Push({mode: "priority", targetIdx: targetIdx, leftRef: leftRef, rightRef: rightRef, pct: pct, hide: isHide, raw: line})
             continue
         }
-        if RegExMatch(line, "i)^\s*(\d+)\s*_\s*F(?:\s*=\s*AUTO)?\s*$", &m) {
+        if RegExMatch(line, "i)^\s*(\d+)\s*_\s*F(?:\s*=\s*(AUTO(?:-HIDE)?))?\s*$", &m) {
             targetIdx := Integer(m[1])
+            isHide := m.Count >= 2 && m[2] != "" && InStr(StrUpper(m[2]), "-HIDE")
             if targetIdx >= 1
-                rules.Push({mode: "follow", targetIdx: targetIdx, raw: line})
+                rules.Push({mode: "follow", targetIdx: targetIdx, hide: isHide, raw: line})
         }
     }
     return rules
@@ -365,7 +367,7 @@ FindPlacementByLabel(placementsByIndex, label) {
 BuildFinalStops(placementsByIndex) {
     stops := [{label: "A", pos: 0, type: "endpoint"}]
     for _, placement in placementsByIndex
-        stops.Push({label: placement.pct, pos: placement.pos, type: placement.stage, id: placement.label})
+        stops.Push({label: placement.pct, pos: placement.pos, type: placement.stage, targetIdx: placement.targetIdx})
     stops.Push({label: "B", pos: 100, type: "endpoint"})
 
     sortedStops := []
@@ -642,6 +644,11 @@ RedrawCanvas(g) {
     s := GetCanvasState(g)
     plan := GenerateFishbonePlan(s.totalInbetweens, s.followPct, s.priorityRules)
 
+    hiddenByRule := Map()
+    for rule in s.priorityRules
+        if rule.HasProp("hide") && rule.hide
+            hiddenByRule[rule.targetIdx] := true
+
     pBitmap := GDI.CreateBitmap(s.w, s.h)
     pGraphics := GDI.GetGraphics(pBitmap)
     if !pBitmap || !pGraphics {
@@ -681,10 +688,19 @@ RedrawCanvas(g) {
         }
     }
 
-    showBranches := !g.HasProp("showLines") || g.showLines
-    if showBranches {
+    showPriority := !g.HasProp("showPriority") || g.showPriority
+    showFollow := !g.HasProp("showFollow") || g.showFollow
+    if showPriority || showFollow {
         pCount := 0, fCount := 0
         for placement in plan.placements {
+            if placement.stage = "priority" && !showPriority
+                continue
+            if placement.stage = "follow" && !showFollow
+                continue
+            if g.HasProp("hiddenLines") && g.hiddenLines.Has(placement.stage "_" placement.targetIdx)
+                continue
+            if hiddenByRule.Has(placement.targetIdx)
+                continue
             if placement.stage = "priority"
                 pCount += 1
             else
@@ -692,6 +708,14 @@ RedrawCanvas(g) {
         }
         pIdx := 0, fIdx := 0, seqIdx := 0
         for placement in plan.placements {
+            if placement.stage = "priority" && !showPriority
+                continue
+            if placement.stage = "follow" && !showFollow
+                continue
+            if g.HasProp("hiddenLines") && g.hiddenLines.Has(placement.stage "_" placement.targetIdx)
+                continue
+            if hiddenByRule.Has(placement.targetIdx)
+                continue
             seqIdx += 1
             leftX := PosToX(s, placement.left)
             nodeX := PosToX(s, placement.pos)
@@ -735,6 +759,28 @@ RedrawCanvas(g) {
     GDI.DisposeImage(pBitmap)
 
     UpdateOutput(g, plan, s)
+}
+
+OnCanvasClick(g) {
+    MouseGetPos(&clickX, &clickY, , , 2)
+    s := GetCanvasState(g)
+    plan := GenerateFishbonePlan(s.totalInbetweens, s.followPct, s.priorityRules)
+    baseY := Round(s.mt + s.gh / 2)
+
+    if Abs(clickY - baseY) > 70
+        return
+
+    for placement in plan.placements {
+        if Abs(clickX - PosToX(s, placement.pos)) <= 10 {
+            key := placement.stage "_" placement.targetIdx
+            if g.hiddenLines.Has(key)
+                g.hiddenLines.Delete(key)
+            else
+                g.hiddenLines[key] := true
+            RedrawCanvas(g)
+            return
+        }
+    }
 }
 
 UpdateOutput(g, plan, s) {
@@ -906,6 +952,28 @@ ShowGuide() {
 
     guideGui.SetFont("s10", "Segoe UI")
     guideGui.AddText(
+        "xm y+14 cFF6B6B",
+        "Hide Rule"
+    )
+
+    hideText :=
+    "
+    (
+    4_f=Auto-Hide
+    → Hide follow line at frame 4
+
+    2_A>B=Auto-Hide
+    → Hide priority line at frame 2
+    )"
+
+    guideGui.SetFont("s9", "Segoe UI")
+    guideGui.AddEdit(
+        "xm w540 h90 ReadOnly -VScroll BackgroundFFFFFF c000000",
+        hideText
+    )
+
+    guideGui.SetFont("s10", "Segoe UI")
+    guideGui.AddText(
         "xm y+14 cFFD54F",
         "Allowed Percentages"
     )
@@ -930,7 +998,7 @@ ShowGuide() {
         (*) => guideGui.Destroy()
     )
 
-    guideGui.Show("w580 h740 Center")
+    guideGui.Show("w580 h880 Center")
 }
 
 OpenExamplesGui(mainGui) {
@@ -1074,14 +1142,24 @@ OpenTimelineGui() {
         "📄 Output"
     )
 
-    g.showLines := true
-    g.btnLines := g.AddButton(
-        "x300 yp w65 h28",
-        "🔍 Lines"
+    g.showPriority := true
+    g.showFollow := true
+    g.btnPriority := g.AddButton(
+        "x300 yp w95 h28",
+        "✅ Priority"
     )
-    g.btnLines.OnEvent("Click", (*) => (
-        g.showLines := !g.showLines,
-        g.btnLines.Text := g.showLines ? "🔍 Lines" : "🔍 Hide",
+    g.btnPriority.OnEvent("Click", (*) => (
+        g.showPriority := !g.showPriority,
+        g.btnPriority.Text := (g.showPriority ? "✅ Priority" : "❌ Priority"),
+        RedrawCanvas(g)
+    ))
+    g.btnFollow := g.AddButton(
+        "x400 yp w85 h28",
+        "✅ Follow"
+    )
+    g.btnFollow.OnEvent("Click", (*) => (
+        g.showFollow := !g.showFollow,
+        g.btnFollow.Text := (g.showFollow ? "✅ Follow" : "❌ Follow"),
         RedrawCanvas(g)
     ))
 
@@ -1091,18 +1169,20 @@ OpenTimelineGui() {
     )
 
     g.AddText(
-        "x14 y178 w620 c909090",
-        "Format: 3_A>B=50, 1_f, 2_f    |    Use commas or new lines    |    Values: 25 33 40 50 60 66 75"
+        "x14 y165 w620 c909090",
+        "Format: 3_A>B=50, 1_f | commas or new lines | Add -Hide to hide line | Values: 25 33 40 50 60 66 75 "
     )
 
     g.AddText(
-        "x14 y208 cFFFFFF",
+        "x14 y196 cFFFFFF",
         "Timeline Preview"
     )
 
     g.canvas := g.AddPicture(
-        "x14 y232 w620 h220 Background1E2127"
+        "x14 y222 w620 h220 Background1E2127"
     )
+    g.hiddenLines := Map()
+    g.canvas.OnEvent("Click", (*) => OnCanvasClick(g))
 
     g.priorityRules.OnEvent(
         "Change",
