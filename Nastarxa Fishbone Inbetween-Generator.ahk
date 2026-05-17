@@ -10,20 +10,11 @@ OpenTimelineGui()
 
 ^F1::OpenTimelineGui()
 
-!h::{
-    global _fishGui
-    AddHideToSelection(_fishGui)
-}
-^z::{
-    global _fishGui
-    if _fishGui && WinActive("ahk_id " _fishGui.Hwnd)
-        UndoRedo(_fishGui, -1)
-}
-^+z::{
-    global _fishGui
-    if _fishGui && WinActive("ahk_id " _fishGui.Hwnd)
-        UndoRedo(_fishGui, 1)
-}
+#HotIf _fishGui && WinActive("ahk_id " _fishGui.Hwnd)
+!h::AddHideToSelection(_fishGui)
+^z::UndoRedo(_fishGui, -1)
+^+z::UndoRedo(_fishGui, 1)
+#HotIf
 
 TrayTip("Nastarxa Fishbone", "Press Ctrl+F1 to open the timeline")
 OnExit((*) => GDI.Stop())
@@ -1343,7 +1334,8 @@ OpenTimelineGui() {
     g.OnEvent(
         "Close",
         (*) => (
-            guiObj := 0
+            guiObj := 0,
+            _fishGui := 0
         )
     )
 
