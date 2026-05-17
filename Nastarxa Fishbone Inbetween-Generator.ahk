@@ -4,10 +4,26 @@ TraySetIcon "Fishbone.ico"
 
 global _ALLOWED := [50, 66, 33, 25, 75, 40, 60]
 global _EXAMPLES_FILE := A_ScriptDir "\Fishbone Examples.ini"
+global _fishGui := 0
 
 OpenTimelineGui()
 
 ^F1::OpenTimelineGui()
+
+!h::{
+    global _fishGui
+    AddHideToSelection(_fishGui)
+}
+^z::{
+    global _fishGui
+    if _fishGui && WinActive("ahk_id " _fishGui.Hwnd)
+        UndoRedo(_fishGui, -1)
+}
+^+z::{
+    global _fishGui
+    if _fishGui && WinActive("ahk_id " _fishGui.Hwnd)
+        UndoRedo(_fishGui, 1)
+}
 
 TrayTip("Nastarxa Fishbone", "Press Ctrl+F1 to open the timeline")
 OnExit((*) => GDI.Stop())
@@ -217,6 +233,99 @@ NormalizeRefToken(token) {
     return ""
 }
 
+TrackCaret(g) {
+    sel := DllCall("SendMessage", "Ptr", g.priorityRules.Hwnd, "UInt", 0x00B0, "Ptr", 0, "Ptr", 0, "UInt")
+    g._savedPos := sel & 0xFFFF
+}
+
+AddHideToSelection(g) {
+    hEdit := g.priorityRules.Hwnd
+    full := g.priorityRules.Value
+    len := StrLen(full)
+
+    if g.priorityRules.Focused
+        cursorPos0 := DllCall("SendMessage", "Ptr", hEdit, "UInt", 0x00B0, "Ptr", 0, "Ptr", 0, "UInt") & 0xFFFF
+    else if g.HasProp("_savedPos")
+        cursorPos0 := g._savedPos
+    else
+        cursorPos0 := 0
+    cursorPos1 := cursorPos0 + 1
+
+    ; Find segment boundaries (separators: comma, \r, \n)
+    segStart1 := 1
+    pos1 := cursorPos1
+    while pos1 > 1 {
+        ch := SubStr(full, pos1 - 1, 1)
+        if ch = "," || ch = "`r" || ch = "`n" {
+            segStart1 := pos1
+            break
+        }
+        pos1--
+    }
+
+    segEnd1 := len + 1
+    pos1 := cursorPos1
+    while pos1 <= len {
+        ch := SubStr(full, pos1, 1)
+        if ch = "," || ch = "`r" || ch = "`n" {
+            segEnd1 := pos1
+            break
+        }
+        pos1++
+    }
+
+    segText := SubStr(full, segStart1, segEnd1 - segStart1)
+    segText := Trim(segText)
+    isFollow := RegExMatch(segText, "^\d+_f$")
+    if (!InStr(segText, "=") && !isFollow) || RegExMatch(segText, "-Hide$")
+        return
+
+    ; Find position after last non-whitespace char in segment
+    insertPos1 := segEnd1
+    pos1 := segEnd1 - 1
+    while pos1 >= segStart1 {
+        ch := SubStr(full, pos1, 1)
+        if ch != " " && ch != "`t" {
+            insertPos1 := pos1 + 1
+            break
+        }
+        pos1--
+    }
+
+    insertPos0 := insertPos1 - 1
+    DllCall("SendMessage", "Ptr", hEdit, "UInt", 0x00B1, "Ptr", insertPos0, "Ptr", insertPos0)
+    strBuf := Buffer(5 * 2 + 2)
+    StrPut("-Hide", strBuf, "UTF-16")
+    DllCall("SendMessage", "Ptr", hEdit, "UInt", 0x00C2, "Ptr", 1, "Ptr", strBuf.Ptr)
+}
+
+PushHistory(g) {
+    if g._historyBusy
+        return
+    current := g.priorityRules.Value
+    if g._history.Length && g._history[g._historyIdx + 1] = current
+        return
+    while g._history.Length > g._historyIdx + 1
+        g._history.Pop()
+    g._history.Push(current)
+    if g._history.Length > 10
+        g._history.RemoveAt(1)
+    g._historyIdx := g._history.Length - 1
+}
+
+UndoRedo(g, dir) {
+    if !g || !g.HasProp("_history")
+        return
+    newIdx := g._historyIdx + dir
+    if newIdx < 0 || newIdx >= g._history.Length
+        return
+    g._historyBusy := true
+    g._historyIdx := newIdx
+    g.priorityRules.Value := g._history[newIdx + 1]
+    g._historyBusy := false
+    RedrawCanvas(g)
+}
+
 ParsePriorityRules(text) {
     rules := []
     parts := StrSplit(text, "`n", "`r")
@@ -230,22 +339,23 @@ ParsePriorityRules(text) {
         }
     }
     for line in expanded {
-        if RegExMatch(line, "i)^\s*(\d+)\s*_\s*([A-Z0-9 ]+)\s*>\s*([A-Z0-9 ]+)\s*=\s*(\d+|AUTO(?:-HIDE)?)\s*$", &m) {
+        if RegExMatch(line, "i)^\s*(\d+)\s*_\s*([A-Z0-9 ]+)\s*>\s*([A-Z0-9 ]+)\s*=\s*(\d+|AUTO)\s*(-HIDE)?\s*$", &m) {
             targetIdx := Integer(m[1])
             leftRef := NormalizeRefToken(m[2])
             rightRef := NormalizeRefToken(m[3])
             pctRaw := StrUpper(Trim(m[4]))
-            isHide := InStr(pctRaw, "-HIDE")
+            isHide := m.Count >= 5 && m[5] != ""
             pct := isHide ? "AUTO" : (pctRaw = "AUTO" ? "AUTO" : Integer(pctRaw))
             if targetIdx >= 1 && leftRef != "" && rightRef != "" && leftRef != rightRef && (pct = "AUTO" || IsAllowed(pct))
                 rules.Push({mode: "priority", targetIdx: targetIdx, leftRef: leftRef, rightRef: rightRef, pct: pct, hide: isHide, raw: line})
             continue
         }
-        if RegExMatch(line, "i)^\s*(\d+)\s*_\s*F(?:\s*=\s*(AUTO(?:-HIDE)?))?\s*$", &m) {
+        if RegExMatch(line, "i)^\s*(\d+)\s*_\s*F(-HIDE)?(?:\s*=\s*(\d+|AUTO)(-HIDE)?)?\s*$", &m) {
             targetIdx := Integer(m[1])
-            isHide := m.Count >= 2 && m[2] != "" && InStr(StrUpper(m[2]), "-HIDE")
-            if targetIdx >= 1
-                rules.Push({mode: "follow", targetIdx: targetIdx, hide: isHide, raw: line})
+            isHide := InStr(StrUpper(line), "-HIDE")
+            pct := (m.Count >= 3 && m[3] != "") ? (RegExMatch(m[3], "^\d+$") ? Integer(m[3]) : "AUTO") : ""
+            if targetIdx >= 1 && (pct = "" || pct = "AUTO" || IsAllowed(pct))
+                rules.Push({mode: "follow", targetIdx: targetIdx, hide: isHide, pct: pct, raw: line})
         }
     }
     return rules
@@ -442,7 +552,7 @@ SeedAutoPriorityAnchors(plan, followRuleMap, needed, usedMap) {
     return progress
 }
 
-ResolveFollowRuns(plan, followRuleMap, needed, usedMap) {
+ResolveFollowRuns(plan, followRuleMap, needed, usedMap, followPct := 50) {
     progress := false
     idx := 1
     while idx <= needed {
@@ -476,10 +586,24 @@ ResolveFollowRuns(plan, followRuleMap, needed, usedMap) {
 
         Loop runEnd - runStart + 1 {
             targetIdx := runStart + A_Index - 1
-            frac := (targetIdx - leftIdx) / spanCount
-            pos := leftPos + (rightPos - leftPos) * frac
-            pct := SnapToAllowed(Round(100 * (pos - leftPos) / (rightPos - leftPos)))
-            placement := {pos: pos, pct: pct, left: leftPos, right: rightPos, depth: 1, stage: "follow"}
+            rule := followRuleMap[targetIdx]
+
+            ; Position: use explicit pct if set, otherwise uniform within run
+            if rule.pct is Integer
+                pos := leftPos + (rightPos - leftPos) * rule.pct / 100
+            else {
+                frac := (targetIdx - leftIdx) / spanCount
+                pos := leftPos + (rightPos - leftPos) * frac
+            }
+
+            ; PCT label: local between immediate left neighbor and right boundary
+            if A_Index = 1
+                segLeft := leftPos
+            else
+                segLeft := plan.placementsByIndex[targetIdx - 1].pos
+            localPct := Round(100 * (pos - segLeft) / (rightPos - segLeft))
+            pct := SnapToAllowed(localPct)
+            placement := {pos: pos, pct: pct, left: segLeft, right: rightPos, depth: 1, stage: "follow"}
             placement.label := GetPlacementLabel(targetIdx)
             placement.leftRef := leftIdx = 0 ? "A" : GetPlacementLabel(targetIdx - 1)
             placement.rightRef := rightIdx = needed + 1 ? "B" : GetPlacementLabel(targetIdx + 1)
@@ -563,13 +687,13 @@ GenerateFishbonePlan(totalInbetweens, followPct, priorityRules) {
         loopGuard += 1
         resolved := ResolvePriorityPending(plan, priorityPending, usedMap, needed)
         priorityPending := resolved.pending
-        followProgress := ResolveFollowRuns(plan, followRuleMap, needed, usedMap)
+        followProgress := ResolveFollowRuns(plan, followRuleMap, needed, usedMap, followPct)
         if !resolved.progress && !followProgress
             break
     }
 
     if followRuleMap.Count > 0
-        ResolveFollowRuns(plan, followRuleMap, needed, usedMap)
+        ResolveFollowRuns(plan, followRuleMap, needed, usedMap, followPct)
 
     queue := plan.placementsByIndex.Count ? BuildQueueFromStops(BuildFinalStops(plan.placementsByIndex), 2) : [{left: 0, right: 100, depth: 1}]
 
@@ -599,7 +723,7 @@ GenerateFishbonePlan(totalInbetweens, followPct, priorityRules) {
         if priorityPending.Length > 0 || followRuleMap.Count > 0 {
             resolved := ResolvePriorityPending(plan, priorityPending, usedMap, needed)
             priorityPending := resolved.pending
-            ResolveFollowRuns(plan, followRuleMap, needed, usedMap)
+            ResolveFollowRuns(plan, followRuleMap, needed, usedMap, followPct)
             queue := BuildQueueFromStops(BuildFinalStops(plan.placementsByIndex), 2)
         }
     }
@@ -985,7 +1109,7 @@ ShowGuide() {
 
     guideGui.AddText(
         "xm y+7 c909090",
-        "Rules can be separated with commas or new lines."
+        "Rules use commas (newlines also supported)."
     )
 
     btnClose := guideGui.AddButton(
@@ -1098,7 +1222,7 @@ OpenExamplesGui(mainGui) {
 }
 
 OpenTimelineGui() {
-
+    global _fishGui
     static guiObj := 0
 
     if IsObject(guiObj) {
@@ -1163,14 +1287,23 @@ OpenTimelineGui() {
         RedrawCanvas(g)
     ))
 
+    g.btnHide := g.AddButton(
+        "x490 yp w56 h28",
+        "-Hide"
+    )
+    g.btnHide.OnEvent("Click", (*) => AddHideToSelection(g))
+
     g.priorityRules := g.AddEdit(
         "x14 y74 w620 h96 Multi WantTab BackgroundFFFFFF c000000",
-        "4_f=Auto`r`n3_f=Auto`r`n1_f=Auto`r`n2_f=Auto"
+        "1_f, 2_A>B=Auto, 3_f, 4_f"
     )
+    g._history := [g.priorityRules.Value]
+    g._historyIdx := 0
+    g._historyBusy := false
 
     g.AddText(
         "x14 y165 w620 c909090",
-        "Format: 3_A>B=50, 1_f | commas or new lines | Add -Hide to hide line | Values: 25 33 40 50 60 66 75 "
+        "Format: 3_A>B=50, 1_f | Add -Hide to hide line | Values: 25 33 40 50 60 66 75 "
     )
 
     g.AddText(
@@ -1186,8 +1319,11 @@ OpenTimelineGui() {
 
     g.priorityRules.OnEvent(
         "Change",
-        (*) => RedrawCanvas(g)
+        (*) => (g._historyBusy ? "" : RedrawCanvas(g), PushHistory(g))
     )
+    TrackCaret(g)
+    g.priorityRules.OnEvent("Focus", (*) => TrackCaret(g))
+    g.priorityRules.OnEvent("LoseFocus", (*) => TrackCaret(g))
 
     g.btnGuide.OnEvent(
         "Click",
@@ -1215,6 +1351,7 @@ OpenTimelineGui() {
 
     g._initialSetup := true
 
+    _fishGui := g
     g.Show("w650 h470 Center")
 
     g._initialSetup := false
