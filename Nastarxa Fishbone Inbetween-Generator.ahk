@@ -1212,6 +1212,555 @@ OpenExamplesGui(mainGui) {
     eg.Show("w590 h560 Center")
 }
 
+; ─── Preview System ──────────────────────────────────────────────
+
+ShowPreview(g) {
+    static previewGui := 0
+
+    if IsObject(previewGui) {
+        try previewGui.Show()
+        WinActivate(previewGui.Hwnd)
+        UpdatePreviewFrames(previewGui, g)
+        return
+    }
+
+    previewGui := Gui("+Owner" g.Hwnd " +Resize", "Preview - Movement Test")
+    previewGui.BackColor := "25282E"
+    previewGui.SetFont("s10", "Segoe UI")
+    previewGui.MarginX := 14
+    previewGui.MarginY := 14
+
+    previewGui.SetFont("s12", "Segoe UI")
+    previewGui.AddText("x14 y12 cFFFFFF", "Movement Preview")
+    previewGui.SetFont("s10", "Segoe UI")
+
+    previewGui.canvas := previewGui.AddPicture("x14 y36 w600 h200 Background1E2127")
+
+    cY := 256
+
+    previewGui.AddText("x14 y" cY " c909090", "Speed:")
+    previewGui.speedEdit := previewGui.AddEdit("x+4 yp-3 w50 h24 Center BackgroundFFFFFF c000000 Number", "100")
+
+    previewGui.btnStart := previewGui.AddButton("x+20 yp-1 w32 h26", "|<")
+    previewGui.btnPrev := previewGui.AddButton("x+4 yp w32 h26", "<")
+    previewGui.btnPlay := previewGui.AddButton("x+4 yp w50 h26", "Play")
+    previewGui.btnStop := previewGui.AddButton("x+4 yp w40 h26", "Stop")
+    previewGui.btnNext := previewGui.AddButton("x+4 yp w32 h26", ">")
+    previewGui.btnEnd := previewGui.AddButton("x+4 yp w32 h26", ">|")
+
+    previewGui.AddText("x+10 y" cY " c909090", "Frame:")
+    previewGui.frameLabel := previewGui.AddText("x+4 y" cY " w80 cFFFFFF", "0 / 0")
+
+    previewGui.curveCb := previewGui.AddCheckbox("x+10 y" cY-1 " cB0BEC5 Background25282E Checked", "Curve")
+    previewGui.curveCb.OnEvent("Click", (*) => (previewGui._useCurve := previewGui.curveCb.Value, DrawPreview(previewGui, g)))
+
+    previewGui._frames := []
+    previewGui._currentIdx := 0
+    previewGui._progress := 0.0
+    previewGui._playing := false
+    previewGui._mainGui := g
+    previewGui._tickFn := 0
+    previewGui._useCurve := true
+
+    previewGui.btnPlay.OnEvent("Click", (*) => TogglePlay(previewGui, g))
+    previewGui.btnStop.OnEvent("Click", (*) => (
+        StopPlay(previewGui),
+        previewGui._currentIdx := 0,
+        UpdateFrameUI(previewGui, g)
+    ))
+    previewGui.btnPrev.OnEvent("Click", (*) => StepFrame(previewGui, g, -1))
+    previewGui.btnNext.OnEvent("Click", (*) => StepFrame(previewGui, g, 1))
+    previewGui.btnStart.OnEvent("Click", (*) => (
+        StopPlay(previewGui),
+        previewGui._currentIdx := 0,
+        UpdateFrameUI(previewGui, g)
+    ))
+    previewGui.btnEnd.OnEvent("Click", (*) => (
+        StopPlay(previewGui),
+        previewGui._currentIdx := previewGui._frames.Length - 1,
+        UpdateFrameUI(previewGui, g)
+    ))
+
+    previewGui.OnEvent("Close", (*) => (
+        StopPlay(previewGui),
+        previewGui := 0
+    ))
+
+    previewGui.OnEvent("Size", (thisGui, minMax, aW, aH) => OnPreviewSize(thisGui, minMax, aW, aH, g))
+
+    UpdatePreviewFrames(previewGui, g)
+    previewGui.Show("w630 h300")
+}
+
+UpdatePreviewFrames(previewGui, g) {
+    s := GetCanvasState(g)
+    plan := GenerateFishbonePlan(s.totalInbetweens, s.followPct, s.priorityRules)
+
+    frames := []
+    for stop in plan.finalStops
+        frames.Push({label: stop.label, pos: stop.pos})
+
+    previewGui._frames := frames
+    previewGui._currentIdx := 0
+    previewGui.speedEdit.Value := 100
+    UpdateFrameUI(previewGui, g)
+}
+
+UpdateFrameUI(previewGui, g) {
+    previewGui._progress := 0.0
+    total := previewGui._frames.Length
+    current := previewGui._currentIdx + 1
+    previewGui.frameLabel.Text := current " / " total
+    DrawPreview(previewGui, g)
+}
+
+RefreshFrameLabel(previewGui) {
+    total := previewGui._frames.Length
+    current := previewGui._currentIdx + 1
+    previewGui.frameLabel.Text := current " / " total
+}
+
+DrawPreview(previewGui, g) {
+    frames := previewGui._frames
+    if frames.Length = 0
+        return
+
+    previewGui.canvas.GetPos(, , &w, &h)
+    if w < 100 {
+        w := 600
+        h := 200
+    }
+
+    pBitmap := GDI.CreateBitmap(w, h)
+    pGraphics := GDI.GetGraphics(pBitmap)
+    if !pBitmap || !pGraphics
+        return
+
+    DllCall("gdiplus\GdipSetSmoothingMode", "Ptr", pGraphics, "Int", 4)
+    GDI.Clear(pGraphics, 0xFF1E2127)
+
+    ml := 50
+    mr := 50
+    gw := w - ml - mr
+    baseY := h / 2 - 10
+
+    useCurve := previewGui._useCurve
+
+    ; --- Draw axis (curve or line) ---
+    pAxis := GDI.CreatePen(0xFFE8E8E8, 2)
+    arcHeight := 60
+
+    if useCurve {
+        for i, frame in frames {
+            if i >= frames.Length
+                break
+            x1 := ml + Round(gw * frame.pos / 100)
+            x2 := ml + Round(gw * frames[i+1].pos / 100)
+            midX := (x1 + x2) // 2
+            dir := Mod(i - 1, 2) = 0 ? -1 : 1
+            ctrlY := baseY + dir * arcHeight
+            GDI.DrawBezier(pGraphics, pAxis, x1, baseY, midX, ctrlY, midX, ctrlY, x2, baseY)
+        }
+    } else {
+        GDI.DrawLine(pGraphics, pAxis, ml, baseY, ml + gw, baseY)
+    }
+    GDI.DeletePen(pAxis)
+
+    pTick := GDI.CreatePen(0xFFBFC5D2, 1)
+    pLabelBrush := GDI.CreateBrush(0xFF9AA0AA)
+    pInRangeBrush := GDI.CreateBrush(0xFF72DDF7)
+
+    for i, frame in frames {
+        x := ml + Round(gw * frame.pos / 100)
+        GDI.DrawLine(pGraphics, pTick, x, baseY - 6, x, baseY + 6)
+        label := frame.label
+        if RegExMatch(label, "^\d+$")
+            label .= "%"
+        GDI.DrawString(pGraphics, label, x - 15, baseY + 10, 30, 14, pLabelBrush, 8)
+        GDI.FillEllipse(pGraphics, pInRangeBrush, x, baseY, 4)
+    }
+
+    GDI.DeletePen(pTick)
+    GDI.DeleteBrush(pLabelBrush)
+    GDI.DeleteBrush(pInRangeBrush)
+
+    ; Interpolated circle position (curve or linear)
+    curIdx := previewGui._currentIdx
+    t := previewGui._progress
+    curFrame := frames[curIdx + 1]
+    if t > 0 {
+        nextIdx := curIdx + 1
+        if nextIdx >= frames.Length
+            nextIdx := 0
+        nextFrame := frames[nextIdx + 1]
+    } else {
+        nextFrame := curFrame
+    }
+
+    x1 := ml + Round(gw * curFrame.pos / 100)
+    x2 := ml + Round(gw * nextFrame.pos / 100)
+
+    if useCurve {
+        midX := (x1 + x2) // 2
+        dir := Mod(curIdx, 2) = 0 ? -1 : 1
+        ctrlY := baseY + dir * arcHeight
+        mt := 1 - t
+        circleX := Round(mt*mt*mt * x1 + 3*t*mt * midX + t*t*t * x2)
+        circleY := Round(mt*mt*mt * baseY + 3*t*mt * ctrlY + t*t*t * baseY)
+    } else {
+        circleX := Round(x1 + (x2 - x1) * t)
+        circleY := baseY
+    }
+
+    curPos := Round(curFrame.pos + (nextFrame.pos - curFrame.pos) * t)
+
+    pCurrentBrush2 := GDI.CreateBrush(0xFFFFC857)
+    GDI.FillEllipse(pGraphics, pCurrentBrush2, circleX, circleY, 10)
+    GDI.DeleteBrush(pCurrentBrush2)
+
+    info := "Position: " Round(curPos) "%  |  Frame " (previewGui._currentIdx + 1) " / " frames.Length
+    pInfo := GDI.CreateBrush(0xFFFFFFFF)
+    GDI.DrawString(pGraphics, info, ml, h - 24, 400, 18, pInfo, 10)
+    GDI.DeleteBrush(pInfo)
+
+    pABrush := GDI.CreateBrush(0xFFFFC857)
+    pBBrush := GDI.CreateBrush(0xFF72DDF7)
+    GDI.DrawString(pGraphics, "A (0%)", 5, baseY - 8, 40, 16, pABrush, 9)
+    GDI.DrawString(pGraphics, "B (100%)", w - 65, baseY - 8, 60, 16, pBBrush, 9)
+    GDI.DeleteBrush(pABrush)
+    GDI.DeleteBrush(pBBrush)
+
+    hBitmap := GDI.GetHBITMAP(pBitmap)
+    if hBitmap
+        previewGui.canvas.Value := "HBITMAP:" hBitmap
+
+    GDI.DeleteGraphics(pGraphics)
+    GDI.DisposeImage(pBitmap)
+}
+
+TogglePlay(previewGui, g) {
+    if previewGui._playing
+        StopPlay(previewGui)
+    else
+        StartPlay(previewGui, g)
+}
+
+StartPlay(previewGui, g) {
+    if previewGui._frames.Length = 0
+        return
+    previewGui._playing := true
+    previewGui.btnPlay.Text := "Pause"
+
+    previewGui._tickFn := () => OnPreviewTick(previewGui, g)
+    SetTimer(previewGui._tickFn, 30)
+}
+
+OnPreviewTick(previewGui, g) {
+    if !previewGui._playing
+        return
+    speed := Integer(previewGui.speedEdit.Value)
+    if speed < 1
+        speed := 1
+    previewGui._progress += 0.02 * speed / 100
+    if previewGui._progress >= 1.0 {
+        previewGui._progress -= 1.0
+        previewGui._currentIdx++
+        if previewGui._currentIdx >= previewGui._frames.Length
+            previewGui._currentIdx := 0
+    }
+    RefreshFrameLabel(previewGui)
+    DrawPreview(previewGui, g)
+}
+
+StopPlay(previewGui) {
+    previewGui._playing := false
+    previewGui.btnPlay.Text := "Play"
+    if previewGui._tickFn {
+        SetTimer(previewGui._tickFn, 0)
+        previewGui._tickFn := 0
+    }
+}
+
+StepFrame(previewGui, g, dir) {
+    if previewGui._frames.Length = 0
+        return
+    StopPlay(previewGui)
+    newIdx := previewGui._currentIdx + dir
+    if newIdx < 0
+        newIdx := 0
+    if newIdx >= previewGui._frames.Length
+        newIdx := previewGui._frames.Length - 1
+    previewGui._currentIdx := newIdx
+    UpdateFrameUI(previewGui, g)
+}
+
+OnPreviewSize(thisGui, minMax, aW, aH, g) {
+    if minMax = -1
+        return
+    try {
+        newW := aW - 28
+        newH := aH - 100
+        if newW < 200
+            newW := 200
+        if newH < 100
+            newH := 100
+        thisGui.canvas.Move(,, newW, newH)
+        DrawPreview(thisGui, g)
+    }
+}
+
+; ─── Timeline Export ─────────────────────────────────────────────
+
+SaveTimelinePNG(g) {
+    file := FileSelect("S16", "inbetween.png", "Save Timeline Preview as PNG", "PNG (*.png)")
+    if file = ""
+        return
+
+    s := GetCanvasState(g)
+    plan := GenerateFishbonePlan(s.totalInbetweens, s.followPct, s.priorityRules)
+
+    ew := 1400, eh := 450
+    ml := 80, mr := 80, mt := 50, mb := 50
+    gw := ew - ml - mr
+    gh := eh - mt - mb
+    baseY := Round(mt + gh / 2)
+
+    pBitmap := GDI.CreateBitmap(ew, eh)
+    pGraphics := GDI.GetGraphics(pBitmap)
+    if !pBitmap || !pGraphics
+        return
+
+    DllCall("gdiplus\GdipSetSmoothingMode", "Ptr", pGraphics, "Int", 4)
+    GDI.Clear(pGraphics, 0xFF2B2D31)
+
+    pAxisPen := GDI.CreatePen(0xFFE8E8E8, 3)
+    pTickPen := GDI.CreatePen(0xFFBFC5D2, 2)
+    pLabelBrush := GDI.CreateBrush(0xFFFFFFFF)
+    pMutedBrush := GDI.CreateBrush(0xFF9AA0AA)
+    pPriorityBrush := GDI.CreateBrush(0xFFFFC857)
+    pFollowBrush := GDI.CreateBrush(0xFF72DDF7)
+    pDotBrush := GDI.CreateBrush(0xFFFFFFFF)
+
+    GDI.DrawLine(pGraphics, pAxisPen, ml, baseY, ml + gw, baseY)
+
+    for stop in plan.finalStops {
+        x := ml + Round(gw * stop.pos / 100)
+        tickH := (stop.type = "endpoint") ? 22 : 18
+        GDI.DrawLine(pGraphics, pTickPen, x, baseY - tickH, x, baseY + tickH)
+        GDI.FillEllipse(pGraphics, pDotBrush, x, baseY, 5)
+
+        if stop.type = "endpoint" {
+            GDI.DrawString(pGraphics, stop.label, x - 25, baseY - 48, 50, 28, pLabelBrush, 20)
+        } else {
+            labelBrush := (stop.type = "priority") ? pPriorityBrush : pFollowBrush
+            GDI.DrawString(pGraphics, stop.label, x - 25, baseY - 64, 50, 24, labelBrush, 16)
+        }
+    }
+
+    hiddenByRule := Map()
+    for rule in s.priorityRules
+        if rule.HasProp("hide") && rule.hide
+            hiddenByRule[rule.targetIdx] := true
+
+    showPriority := !g.HasProp("showPriority") || g.showPriority
+    showFollow := !g.HasProp("showFollow") || g.showFollow
+
+    if showPriority || showFollow {
+        pCount := 0, fCount := 0
+        for placement in plan.placements {
+            if placement.stage = "priority" && !showPriority
+                continue
+            if placement.stage = "follow" && !showFollow
+                continue
+            if g.HasProp("hiddenLines") && g.hiddenLines.Has(placement.stage "_" placement.targetIdx)
+                continue
+            if hiddenByRule.Has(placement.targetIdx)
+                continue
+            if placement.stage = "priority"
+                pCount += 1
+            else
+                fCount += 1
+        }
+        pIdx := 0, fIdx := 0, seqIdx := 0
+        for placement in plan.placements {
+            if placement.stage = "priority" && !showPriority
+                continue
+            if placement.stage = "follow" && !showFollow
+                continue
+            if g.HasProp("hiddenLines") && g.hiddenLines.Has(placement.stage "_" placement.targetIdx)
+                continue
+            if hiddenByRule.Has(placement.targetIdx)
+                continue
+            seqIdx += 1
+            leftX := ml + Round(gw * placement.left / 100)
+            nodeX := ml + Round(gw * placement.pos / 100)
+            rightX := ml + Round(gw * placement.right / 100)
+            if placement.stage = "priority" {
+                t := pCount > 1 ? pIdx / (pCount - 1) : 0
+                branchPen := GDI.CreatePen(GDI.LerpColor(0xFFFFD700, 0xFFFFB300, t), 3)
+                pIdx += 1
+            } else {
+                t := fCount > 1 ? fIdx / (fCount - 1) : 0
+                branchPen := GDI.CreatePen(GDI.LerpColor(0xFF99EEFF, 0xFF7EC8E3, t), 3)
+                fIdx += 1
+            }
+            arcHeight := 12 + placement.depth * 14 + (seqIdx - 1) * 6
+            above := placement.stage != "follow"
+            midLeft := Round((leftX + nodeX) / 2)
+            midRight := Round((nodeX + rightX) / 2)
+            dir := above ? -1 : 1
+            topY := baseY + dir * arcHeight
+            GDI.DrawBezier(pGraphics, branchPen, leftX, baseY, leftX, topY, midLeft, topY, nodeX, baseY)
+            GDI.DrawBezier(pGraphics, branchPen, nodeX, baseY, midRight, topY, rightX, topY, rightX, baseY)
+            GDI.DeletePen(branchPen)
+        }
+    }
+
+    GDI.DrawString(pGraphics, "A", ml - 30, baseY - 5, 24, 24, pLabelBrush, 20)
+    GDI.DrawString(pGraphics, "B", ml + gw + 10, baseY - 5, 24, 24, pLabelBrush, 20)
+    GDI.DrawString(pGraphics, "Priority", ml, eh - 36, 100, 20, pPriorityBrush, 12)
+    GDI.DrawString(pGraphics, "Follow", ml + 110, eh - 36, 80, 20, pFollowBrush, 12)
+    GDI.DrawString(pGraphics, "Allowed: 50, 66, 33, 25, 75, 40, 60", ml + 210, eh - 36, 400, 20, pMutedBrush, 12)
+
+    GDI.DeletePen(pAxisPen)
+    GDI.DeletePen(pTickPen)
+    GDI.DeleteBrush(pLabelBrush)
+    GDI.DeleteBrush(pMutedBrush)
+    GDI.DeleteBrush(pPriorityBrush)
+    GDI.DeleteBrush(pFollowBrush)
+    GDI.DeleteBrush(pDotBrush)
+
+    clsid := Buffer(16)
+    DllCall("ole32\CLSIDFromString", "Str", "{557CF406-1A04-11D3-9A73-0000F81EF32E}", "Ptr", clsid)
+    DllCall("gdiplus\GdipSaveImageToFile", "Ptr", pBitmap, "Str", file, "Ptr", clsid, "Ptr", 0)
+
+    GDI.DeleteGraphics(pGraphics)
+    GDI.DisposeImage(pBitmap)
+    TrayTip("Timeline", "PNG saved to " file)
+}
+
+SaveTimelineSVG(g) {
+    file := FileSelect("S16", "inbetween.svg", "Save Timeline Preview as SVG", "SVG (*.svg)")
+    if file = ""
+        return
+
+    s := GetCanvasState(g)
+    plan := GenerateFishbonePlan(s.totalInbetweens, s.followPct, s.priorityRules)
+
+    ew := 1400, eh := 450
+    ml := 80, mr := 80, mt := 50, mb := 50
+    gw := ew - ml - mr
+    gh := eh - mt - mb
+    baseY := Round(mt + gh / 2)
+
+    svg := '<?xml version="1.0" encoding="UTF-8"?>'
+    svg .= '<svg xmlns="http://www.w3.org/2000/svg" width="' ew '" height="' eh '" viewBox="0 0 ' ew ' ' eh '">'
+    svg .= '<rect width="' ew '" height="' eh '" fill="#2B2D31"/>'
+    svg .= '<line x1="' ml '" y1="' baseY '" x2="' (ml+gw) '" y2="' baseY '" stroke="#E8E8E8" stroke-width="3"/>'
+
+    for stop in plan.finalStops {
+        x := ml + Round(gw * stop.pos / 100)
+        tickH := (stop.type = "endpoint") ? 22 : 18
+        svg .= '<line x1="' x '" y1="' (baseY - tickH) '" x2="' x '" y2="' (baseY + tickH) '" stroke="#BFC5D2" stroke-width="2"/>'
+        svg .= '<circle cx="' x '" cy="' baseY '" r="5" fill="#FFFFFF"/>'
+
+        if stop.type = "endpoint" {
+            svg .= '<text x="' x '" y="' (baseY - 48) '" fill="#FFFFFF" font-family="Consolas" font-size="20" text-anchor="middle">' SvgEsc(stop.label) '</text>'
+        } else {
+            fill := (stop.type = "priority") ? "#FFC857" : "#72DDF7"
+            svg .= '<text x="' x '" y="' (baseY - 64) '" fill="' fill '" font-family="Consolas" font-size="16" text-anchor="middle">' SvgEsc(stop.label) '</text>'
+        }
+    }
+
+    hiddenByRule := Map()
+    for rule in s.priorityRules
+        if rule.HasProp("hide") && rule.hide
+            hiddenByRule[rule.targetIdx] := true
+
+    showPriority := !g.HasProp("showPriority") || g.showPriority
+    showFollow := !g.HasProp("showFollow") || g.showFollow
+
+    if showPriority || showFollow {
+        pCount := 0, fCount := 0
+        for placement in plan.placements {
+            if placement.stage = "priority" && !showPriority
+                continue
+            if placement.stage = "follow" && !showFollow
+                continue
+            if g.HasProp("hiddenLines") && g.hiddenLines.Has(placement.stage "_" placement.targetIdx)
+                continue
+            if hiddenByRule.Has(placement.targetIdx)
+                continue
+            if placement.stage = "priority"
+                pCount += 1
+            else
+                fCount += 1
+        }
+        pIdx := 0, fIdx := 0, seqIdx := 0
+        for placement in plan.placements {
+            if placement.stage = "priority" && !showPriority
+                continue
+            if placement.stage = "follow" && !showFollow
+                continue
+            if g.HasProp("hiddenLines") && g.hiddenLines.Has(placement.stage "_" placement.targetIdx)
+                continue
+            if hiddenByRule.Has(placement.targetIdx)
+                continue
+            seqIdx += 1
+            leftX := ml + Round(gw * placement.left / 100)
+            nodeX := ml + Round(gw * placement.pos / 100)
+            rightX := ml + Round(gw * placement.right / 100)
+            arcHeight := 12 + placement.depth * 14 + (seqIdx - 1) * 6
+            above := placement.stage != "follow"
+            dir := above ? -1 : 1
+            topY := baseY + dir * arcHeight
+            midLeft := Round((leftX + nodeX) / 2)
+            midRight := Round((nodeX + rightX) / 2)
+
+            if placement.stage = "priority" {
+                t := pCount > 1 ? pIdx / (pCount - 1) : 0
+                r := Round(255 - (255 - 179) * t)
+                gg := Round(215 - (215 - 179) * t)
+                b := Round(0 + (0 - 0) * t)
+                stroke := '#' Format("{:02X}{:02X}{:02X}", r, gg, b)
+                pIdx += 1
+            } else {
+                t := fCount > 1 ? fIdx / (fCount - 1) : 0
+                r := Round(153 - (153 - 126) * t)
+                gg := Round(238 - (238 - 200) * t)
+                b := Round(255 - (255 - 227) * t)
+                stroke := '#' Format("{:02X}{:02X}{:02X}", r, gg, b)
+                fIdx += 1
+            }
+
+            svg .= '<path d="M' leftX ',' baseY ' C' leftX ',' topY ' ' midLeft ',' topY ' ' nodeX ',' baseY '" stroke="' stroke '" stroke-width="3" fill="none"/>'
+            svg .= '<path d="M' nodeX ',' baseY ' C' midRight ',' topY ' ' rightX ',' topY ' ' rightX ',' baseY '" stroke="' stroke '" stroke-width="3" fill="none"/>'
+        }
+    }
+
+    svg .= '<text x="' (ml - 30) '" y="' (baseY + 7) '" fill="#FFFFFF" font-family="Consolas" font-size="20" text-anchor="middle">A</text>'
+    svg .= '<text x="' (ml + gw + 10) '" y="' (baseY + 7) '" fill="#FFFFFF" font-family="Consolas" font-size="20" text-anchor="middle">B</text>'
+    svg .= '<text x="' ml '" y="' (eh - 26) '" fill="#FFC857" font-family="Consolas" font-size="12">Priority</text>'
+    svg .= '<text x="' (ml + 110) '" y="' (eh - 26) '" fill="#72DDF7" font-family="Consolas" font-size="12">Follow</text>'
+    svg .= '<text x="' (ml + 210) '" y="' (eh - 26) '" fill="#9AA0AA" font-family="Consolas" font-size="12">Allowed: 50, 66, 33, 25, 75, 40, 60</text>'
+    svg .= '</svg>'
+
+    try FileDelete(file)
+    FileAppend(svg, file, "UTF-8")
+    TrayTip("Timeline", "SVG saved to " file)
+}
+
+SvgEsc(text) {
+    text := StrReplace(text, "&", "&amp;")
+    text := StrReplace(text, "<", "&lt;")
+    text := StrReplace(text, ">", "&gt;")
+    text := StrReplace(text, "'", "&apos;")
+    text := StrReplace(text, '"', "&quot;")
+    return text
+}
+
+; ─── Main GUI ────────────────────────────────────────────────────
+
 OpenTimelineGui() {
     global _fishGui
     static guiObj := 0
@@ -1301,6 +1850,13 @@ OpenTimelineGui() {
         "x14 y196 cFFFFFF",
         "Timeline Preview"
     )
+
+    g.btnPreview := g.AddButton("x+10 yp-3 w75 h24", "Preview")
+    g.btnPreview.OnEvent("Click", (*) => ShowPreview(g))
+    g.btnSavePNG := g.AddButton("x+4 yp w80 h24", "Save PNG")
+    g.btnSavePNG.OnEvent("Click", (*) => SaveTimelinePNG(g))
+    g.btnSaveSVG := g.AddButton("x+4 yp w78 h24", "Save SVG")
+    g.btnSaveSVG.OnEvent("Click", (*) => SaveTimelineSVG(g))
 
     g.canvas := g.AddPicture(
         "x14 y222 w620 h220 Background1E2127"
