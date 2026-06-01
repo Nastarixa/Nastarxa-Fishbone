@@ -17,6 +17,7 @@ Design, preview, and export animation inbetween spacing using a fishbone-style t
 ![4](docs/images/4.png)
 ![5](docs/images/5.png)
 ![6](docs/images/6.png)
+![7](docs/images/7.png)
 
 ---
 
