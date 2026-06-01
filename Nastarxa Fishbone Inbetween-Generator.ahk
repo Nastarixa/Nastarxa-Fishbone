@@ -1834,7 +1834,7 @@ ShowGuide() {
 
     guideGui.AddText(
         "xm+6 y+6 w540 c404040",
-        "1. Write rules in the editor â€” e.g. 3_A>B=50, 1_f, 2_f"
+        "1. Write rules in the editor — e.g. 3_A>B=50, 1_f, 2_f"
     )
 
     guideGui.AddText(
