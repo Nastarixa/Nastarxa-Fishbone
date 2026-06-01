@@ -1,180 +1,295 @@
-# 🐟 Nastarxa Fishbone Inbetween Generator
+﻿# 🐟 Nastarxa Fishbone Inbetween Generator
 
-An AutoHotkey v2 tool for planning and visualizing animation inbetween timing using an interactive fishbone timeline preview.
+> 🎬 Visual animation spacing planner for AutoHotkey v2.
 
-Designed for animators who want a fast and visual way to experiment with spacing, timing, and inbetween placement.
+Design, preview, and export animation inbetween spacing using a fishbone-style timeline.
 
----
-
-# ✨ Features
-
-- **🎞 Visual Timeline Preview**  
-  GDI+-rendered fishbone diagram showing inbetween placements along a timeline axis.
-
-- **🧠 Priority Rules**  
-  Manually position specific inbetweens at exact percentages between endpoints or other inbetweens.
-
-- **🌊 Follow Rules**  
-  Automatically place inbetweens between neighboring timing points.
-
-- **🎨 Color-Coded Branches**  
-  Priority branches use gold while follow branches use cyan for quick readability.
-
-- **📝 Live Rule Editor**  
-  Edit rules directly and see the timeline update instantly.
-
-- **📂 Examples Manager**  
-  Save, load, and delete reusable rule configurations with notes.
-
-- **📘 Built-in Guide**  
-  Includes rule syntax reference and usage examples.
-
-- **🪟 Resizable Interface**  
-  Window and canvas automatically adapt to different sizes.
+![Platform](https://img.shields.io/badge/platform-Windows-lightgrey)
+![Language](https://img.shields.io/badge/language-AutoHotkey_v2-green)
 
 ---
 
-# 🎯 Purpose
+## ✨ Features
 
-This tool is designed to make animation spacing:
-- easier to read
-- faster to iterate
-- visually understandable
-- more experimental and expressive
+### 🦴 Fishbone Timeline Preview
 
-Useful for:
-- sprite animation
-- pixel art animation
-- keyframe timing
-- spacing experiments
-- hand-drawn workflows
+Visualize spacing between two key poses.
 
----
-
-# ⌨ Hotkey
-
-| Key | Action |
-|---|---|
-| `Ctrl + F1` | Open the Fishbone Timeline window |
-
----
-
-# 🖼 Image Preview
-
-![1](docs/images/1.png)
-![2](docs/images/2.png)
-![3](docs/images/3.png)
-![4](docs/images/4.png)
-![5](docs/images/5.png)
-
----
-
-# 🧩 Rule Format
-
-## Priority Rules
-
-Position a specific inbetween at a fixed percentage.
-
-### Format
-
-```txt
-<N>_<A/B/IN>><A/B/IN>=<PCT>
+```text
+A |--|---|----|--| B
 ```
 
-| Part | Description |
-|---|---|
-| `N` | Inbetween number |
-| `A/B` | Endpoint A or B |
-| `I1/I2` | Other inbetween indexes |
-| `PCT` | Percentage (`25`, `33`, `40`, `50`, `60`, `66`, `75`) or `Auto` |
+### 🎯 Priority-Based Placement
 
-### Examples
+Place an inbetween at an exact percentage.
 
-```txt
-3_A>B=50
-2_1>3=25
-3_A>B=Auto
+```text
+1_A>B=50
+2_A>B=33
+3_A>B=75
 ```
 
-```txt
-3_A>B=50
-→ Inbetween 3 positioned at 50% between A and B
+Supported values:
 
-2_1>3=25
-→ Inbetween 2 positioned at 25% between I1 and I3
-
-3_A>B=Auto
-→ Automatically calculated spacing
+```text
+25, 33, 40, 50, 60, 66, 75, Auto
 ```
+
+### 🔄 Follow-Based Placement
+
+Automatically distribute inbetweens between existing anchors.
+
+```text
+1_f
+2_f
+3_f
+```
+
+Hide a guide line:
+
+```text
+3_f-Hide
+```
+
+### 📅 Advanced Frame Mode
+
+Place inbetweens directly on timeline frames.
+
+```text
+1[20]_f
+2[50]_A>B=75
+3[80]_f
+```
+
+### ▶️ Playback Preview
+
+* Adjustable FPS
+* Adjustable Frame Count
+* Real-time playback
+
+### 📤 Export
+
+Export generated timing as:
+
+* PNG
+* SVG
+* TXT
+
+Timesheets can also be exported as:
+
+* TXT
+* PNG
+
+### 📚 Example Library
+
+Store and reuse animation timing presets.
+
+Included examples:
+
+* 🐢 Slow In
+* 🏃 Slow Out
+* ⚖️ Ease In-Out
+* 🏹 Anticipation
+* 💥 Impact
+* 🌊 Floating Motion
+* ⚓ Heavy Object
+* 🪶 Light Object
+* ⚙️ Mechanical Motion
+* 🎭 Cartoon Extreme
 
 ---
 
-## Follow Rules
+## ⚙️ Requirements
 
-Automatically place an inbetween between its neighbors.
+* Windows
+* AutoHotkey v2
+* GDI+
 
-### Format
+---
 
-```txt
+## 🚀 Quick Start
+
+1. Run:
+
+```text
+Nastarxa Fishbone Inbetween-Generator.ahk
+```
+
+2. Enter timing rules.
+3. Click **Preview**.
+4. Adjust spacing until it feels right.
+5. Export to PNG, SVG, or TXT.
+
+---
+
+## 📐 Rule Syntax
+
+### 🔄 Follow Rules
+
+Automatically distribute spacing.
+
+```text
 <N>_f
 ```
 
-### Example
+Examples:
 
-```txt
+```text
+1_f
+2_f
 3_f
+3_f-Hide
 ```
 
-```txt
-3_f
-→ Inbetween 3 automatically follows neighboring spacing
+### 🎯 Priority Rules
+
+Place an inbetween at a specific percentage.
+
+```text
+<N>_<LEFT>><RIGHT>=<PERCENT>
+```
+
+Examples:
+
+```text
+1_A>B=50
+2_A>B=33
+3_A>B=75
+4_A>I2=66
+```
+
+### 🏷️ References
+
+| Reference     | Meaning             |
+| ------------- | ------------------- |
+| A             | First Key Pose      |
+| B             | Second Key Pose     |
+| 1, 2, 3...    | Inbetween           |
+| I1, I2, I3... | Inbetween Reference |
+
+---
+
+## 📊 Follow Percentage
+
+The Follow dropdown controls how follow inbetweens are distributed.
+
+Supported values:
+
+```text
+Auto
+25
+33
+40
+50
+60
+66
+75
+```
+
+**Auto** distributes spacing evenly inside the available gap.
+
+---
+
+## 📅 Advanced Mode
+
+Advanced Mode is frame-driven.
+
+Instead of:
+
+```text
+1_A>B=50
+```
+
+You can specify:
+
+```text
+1[24]_f
+```
+
+Meaning:
+
+> Place Inbetween 1 at Frame 24.
+
+Supported bracket styles:
+
+```text
+1[24]_f
+1(24)_f
+1{24}_f
+```
+
+Examples:
+
+```text
+1[10]_f
+4[25]_A>B=Auto
+2[50]_A>B=40
+3[700]_f-Hide
+```
+
+### ⚡ How It Works
+
+* Bracket values represent timeline frames.
+* `[25]` places an inbetween on frame 25.
+* `_f` creates a follow-style inbetween driven by frame position.
+* `_A>B=Auto` calculates the nearest useful percentage from the frame position.
+* Numeric priority values force the inbetween value while the frame remains the placement source.
+* If a frame exceeds the current preview length, the timeline automatically expands.
+
+---
+
+## 📝 Example Timesheet Output
+
+```text
+Frame = 100
+
+Rule =
+1[20]_f
+2[50]_A>B=75
+
+  Fr |    IB
+----+----------------
+   1 | A
+  20 | 1 [40]
+  50 | 2 [75]
+ 100 | B
 ```
 
 ---
 
-# 📊 Allowed Percentages
+## 🎞️ Example Timing Presets
 
-```txt
-25   33   40   50   60   66   75
-```
-
-Rules may be separated using:
-- commas
-- new lines
-
----
-
-# 🚀 Usage
-
-1. Press `Ctrl + F1` to open the Fishbone Timeline window
-2. Enter priority and follow rules in the editor
-3. The fishbone preview updates live
-4. Copy generated output or save rules as examples
+| Preset               | Motion Style              |
+| -------------------- | ------------------------- |
+| 🐢 Slow In           | Accelerating Motion       |
+| 🏃 Slow Out          | Decelerating Motion       |
+| ⚖️ Ease In-Out       | Natural Motion            |
+| 🏹 Anticipation      | Preparation Before Action |
+| 💥 Impact            | Sudden Stop               |
+| 🌊 Floating Motion   | Light Drifting Motion     |
+| ⚓ Heavy Object       | Weighty Motion            |
+| 🪶 Light Object      | Fast Responsive Motion    |
+| ⚙️ Mechanical Motion | Even Timing               |
+| 🎭 Cartoon Extreme   | Exaggerated Timing        |
 
 ---
 
-# 🛠 Requirements
+## 🗂️ Project Structure
 
-- AutoHotkey v2.0+
-- Windows
-- GDI+ support
-
----
-
-# 📁 File Structure
-
-| File | Description |
-|---|---|
-| `Nastarxa Fishbone Inbetween Generator.ahk` | Main script |
-| `Fishbone Examples.ini` | Saved examples and notes |
-| `Fishbone.ico` | Tray icon |
+| File                                        | Purpose              |
+| ------------------------------------------- | -------------------- |
+| `Nastarxa Fishbone Inbetween-Generator.ahk` | Main application     |
+| `Fishbone Examples.ini`                     | Saved examples       |
+| `Fishbone.ico`                              | Application icon     |
+| `docs/`                                     | Documentation assets |
 
 ---
 
-# 📜 License
+## 📜 License
 
 MIT License
-See [LICENSE](/LICENSE).
+
+See [`LICENSE`](./LICENSE).
 
 ---
 
