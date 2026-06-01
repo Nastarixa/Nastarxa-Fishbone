@@ -16,7 +16,7 @@ Design, preview, and export animation inbetween spacing using a fishbone-style t
 Visualize spacing between two key poses.
 
 ```text
-A |--|---|----|--| B
+A |--|---|----|--|> B
 ```
 
 ### 🎯 Priority-Based Placement
