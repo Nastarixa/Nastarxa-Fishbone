@@ -9,6 +9,17 @@ Design, preview, and export animation inbetween spacing using a fishbone-style t
 
 ---
 
+## 🖼 Image Preview
+
+![1](docs/images/1.png)
+![2](docs/images/2.png)
+![3](docs/images/3.png)
+![4](docs/images/4.png)
+![5](docs/images/5.png)
+![6](docs/images/6.png)
+
+---
+
 ## ✨ Features
 
 ### 🦴 Fishbone Timeline Preview
