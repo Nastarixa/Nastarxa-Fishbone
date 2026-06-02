@@ -815,14 +815,16 @@ ResolveFollowRuns(plan, followRuleMap, needed, usedMap, followPct := 50) {
             continue
         }
 
+        segLeft := leftPos
         Loop runEnd - runStart + 1 {
             targetIdx := runStart + A_Index - 1
             rule := followRuleMap[targetIdx]
 
-            if A_Index = 1
-                segLeft := leftPos
-            else
-                segLeft := plan.placementsByIndex[targetIdx - 1].pos
+            if A_Index > 1 {
+                prevIdx := targetIdx - 1
+                if plan.placementsByIndex.Has(prevIdx)
+                    segLeft := plan.placementsByIndex[prevIdx].pos
+            }
 
             ; Auto keeps the original follow behavior: evenly distribute a run inside its available gap.
             if rule.pct is Integer
@@ -851,6 +853,7 @@ ResolveFollowRuns(plan, followRuleMap, needed, usedMap, followPct := 50) {
             usedMap["" pos] := true
             plan.placementsByIndex[targetIdx] := placement
             plan.placements.Push(placement)
+            segLeft := pos
             progress := true
         }
 
@@ -989,7 +992,7 @@ CreateAdvancedFakePriority(rule, totalFrames) {
     return placement
 }
 
-GenerateAdvancedFishbonePlan(totalInbetweens, priorityRules, totalFrames) {
+GenerateAdvancedFishbonePlan(totalInbetweens, priorityRules, totalFrames, useFakePriority := true) {
     plan := {placements: [], finalStops: [], placementsByIndex: Map(), advanced: true}
     needed := totalInbetweens
     priorityPending := []
@@ -1006,7 +1009,7 @@ GenerateAdvancedFishbonePlan(totalInbetweens, priorityRules, totalFrames) {
     SortAdvancedRulesByFrame(priorityPending)
     SortAdvancedRulesByFrame(followPending)
 
-    if priorityPending.Length = 0 && followPending.Length > 0 {
+    if useFakePriority && priorityPending.Length = 0 && followPending.Length > 0 {
         anchorAt := Ceil(followPending.Length / 2)
         fakeRule := followPending[anchorAt]
         fake := CreateAdvancedFakePriority(fakeRule, totalFrames)
@@ -1072,9 +1075,9 @@ SortAdvancedRulesByFrame(rules) {
         rules.Push(rule)
 }
 
-GenerateFishbonePlan(totalInbetweens, followPct, priorityRules, advanced := false, totalFrames := 100) {
+GenerateFishbonePlan(totalInbetweens, followPct, priorityRules, advanced := false, totalFrames := 100, useFakePriority := true) {
     if advanced
-        return GenerateAdvancedFishbonePlan(totalInbetweens, priorityRules, totalFrames)
+        return GenerateAdvancedFishbonePlan(totalInbetweens, priorityRules, totalFrames, useFakePriority)
 
     plan := {placements: [], finalStops: [], placementsByIndex: Map()}
     needed := totalInbetweens
@@ -1097,7 +1100,7 @@ GenerateFishbonePlan(totalInbetweens, followPct, priorityRules, advanced := fals
             followRuleMap[rule.targetIdx] := rule
     }
 
-    if !hasExplicitPriority && followRuleMap.Count > 0
+    if useFakePriority && !hasExplicitPriority && followRuleMap.Count > 0
         SeedAutoPriorityAnchors(plan, followRuleMap, needed, usedMap)
 
     loopGuard := 0
@@ -1153,6 +1156,7 @@ GenerateFishbonePlan(totalInbetweens, followPct, priorityRules, advanced := fals
 
 GetCanvasState(g) {
     advanced := g.HasProp("advancedCb") && g.advancedCb.Value
+    useFakePriority := g.HasProp("fakePriorityCb") ? g.fakePriorityCb.Value : true
     priorityRules := ParsePriorityRules(g.priorityRules.Value, advanced)
     totalInbetweens := GetRuleCount(priorityRules)
     if totalInbetweens < 1
@@ -1194,7 +1198,7 @@ GetCanvasState(g) {
     gw := w - ml - mr
     gh := h - mt - mb
 
-    return {totalInbetweens: totalInbetweens, followPct: followPct, priorityRules: priorityRules, advanced: advanced, fps: fps, frames: frames, w: w, h: h, ml: ml, mr: mr, mt: mt, mb: mb, gw: gw, gh: gh}
+    return {totalInbetweens: totalInbetweens, followPct: followPct, priorityRules: priorityRules, advanced: advanced, useFakePriority: useFakePriority, fps: fps, frames: frames, w: w, h: h, ml: ml, mr: mr, mt: mt, mb: mb, gw: gw, gh: gh}
 }
 
 PosToX(s, pos) {
@@ -1213,7 +1217,7 @@ DrawBranch(pGraphics, pPen, baseY, leftX, nodeX, rightX, arcHeight, above := tru
 
 RedrawCanvas(g) {
     s := GetCanvasState(g)
-    plan := GenerateFishbonePlan(s.totalInbetweens, s.followPct, s.priorityRules, s.advanced, s.frames)
+    plan := GenerateFishbonePlan(s.totalInbetweens, s.followPct, s.priorityRules, s.advanced, s.frames, s.useFakePriority)
     UpdateAdvancedInfo(g, plan, s)
 
     hiddenByRule := Map()
@@ -1354,7 +1358,7 @@ UpdateAdvancedInfo(g, plan, s) {
 OnCanvasClick(g) {
     MouseGetPos(&clickX, &clickY, , , 2)
     s := GetCanvasState(g)
-    plan := GenerateFishbonePlan(s.totalInbetweens, s.followPct, s.priorityRules, s.advanced, s.frames)
+    plan := GenerateFishbonePlan(s.totalInbetweens, s.followPct, s.priorityRules, s.advanced, s.frames, s.useFakePriority)
     baseY := Round(s.mt + s.gh / 2)
 
     g.canvas.GetPos(&cX, &cY, &cW, &cH)
@@ -1451,7 +1455,8 @@ BuildAdvancedRuleTextFromNormal(g) {
                 followPct := "AUTO"
         }
     }
-    plan := GenerateFishbonePlan(needed, followPct, rules, false, frames)
+    useFakePriority := g.HasProp("fakePriorityCb") ? g.fakePriorityCb.Value : true
+    plan := GenerateFishbonePlan(needed, followPct, rules, false, frames, useFakePriority)
     converted := ""
     for rule in rules {
         frameNum := 1
@@ -1634,7 +1639,7 @@ SaveTextBlockAsPNG(text, defaultName := "fishbone-output.png", title := "Save as
 ShowAdvancedTimesheet(mainGui) {
     static sheetGui := 0
     s := GetCanvasState(mainGui)
-    plan := GenerateFishbonePlan(s.totalInbetweens, s.followPct, s.priorityRules, s.advanced, s.frames)
+    plan := GenerateFishbonePlan(s.totalInbetweens, s.followPct, s.priorityRules, s.advanced, s.frames, s.useFakePriority)
     text := s.advanced ? BuildAdvancedTimesheetOutput(plan, s) : "Advanced mode is not active."
 
     if IsObject(sheetGui) {
@@ -1658,7 +1663,7 @@ ShowAdvancedTimesheet(mainGui) {
     
     sheetGui.btnCopy := sheetGui.AddButton(
         "x14 y468 w80 h28",
-        "ðŸ“‹ Copy"
+        "📋 Copy"
     )
 
     sheetGui.btnCopy.OnEvent("Click", (*) => (
@@ -1706,7 +1711,7 @@ OpenOutputGui(mainGui) {
 
     outputGui.btnCopy := outputGui.AddButton(
         "x14 y348 w100 h30",
-        "ðŸ“‹ Copy"
+        "📋Copy"
     )
 
     outputGui.btnCopy.OnEvent("Click", (*) => (
@@ -1714,13 +1719,13 @@ OpenOutputGui(mainGui) {
         TrayTip("Timeline", "Copied to clipboard")
     ))
 
-    outputGui.btnSaveTxt := outputGui.AddButton("x114 y348 w90 h30", "Save TXT")
+    outputGui.btnSaveTxt := outputGui.AddButton("x124 y348 w90 h30", "Save TXT")
     outputGui.btnSaveTxt.OnEvent("Click", (*) => SaveTextBlockAsTXT(outputGui.outputEdit.Value, "fishbone-output.txt", "Save Output as TXT"))
 
-    outputGui.btnSavePng := outputGui.AddButton("x214 y348 w90 h30", "Save PNG")
+    outputGui.btnSavePng := outputGui.AddButton("x224 y348 w90 h30", "Save PNG")
     outputGui.btnSavePng.OnEvent("Click", (*) => SaveTextBlockAsPNG(outputGui.outputEdit.Value, "fishbone-output.png", "Save Output as PNG"))
 
-    outputGui.btnClose := outputGui.AddButton("x314 y348 w90 h30","Close")
+    outputGui.btnClose := outputGui.AddButton("x324 y348 w90 h30","Close")
     outputGui.btnClose.OnEvent("Click", (*) => outputGui.Hide())
     outputGui.OnEvent("Close", (*) => (outputGui.Hide(), true))
 
@@ -2568,7 +2573,7 @@ ShowPreview(g) {
 
 UpdatePreviewFrames(previewGui, g) {
     s := GetCanvasState(g)
-    plan := GenerateFishbonePlan(s.totalInbetweens, s.followPct, s.priorityRules, s.advanced, s.frames)
+    plan := GenerateFishbonePlan(s.totalInbetweens, s.followPct, s.priorityRules, s.advanced, s.frames, s.useFakePriority)
 
     if s.advanced {
         previewGui.fpsEdit.Value := s.fps
@@ -2911,7 +2916,7 @@ SaveTimelinePNG(g) {
         return
 
     s := GetCanvasState(g)
-    plan := GenerateFishbonePlan(s.totalInbetweens, s.followPct, s.priorityRules, s.advanced, s.frames)
+    plan := GenerateFishbonePlan(s.totalInbetweens, s.followPct, s.priorityRules, s.advanced, s.frames, s.useFakePriority)
 
     ew := 1400, eh := 450
     ml := 80, mr := 80, mt := 50, mb := 50
@@ -3043,7 +3048,7 @@ SaveTimelineSVG(g) {
         return
 
     s := GetCanvasState(g)
-    plan := GenerateFishbonePlan(s.totalInbetweens, s.followPct, s.priorityRules, s.advanced, s.frames)
+    plan := GenerateFishbonePlan(s.totalInbetweens, s.followPct, s.priorityRules, s.advanced, s.frames, s.useFakePriority)
 
     ew := 1400, eh := 450
     ml := 80, mr := 80, mt := 50, mb := 50
@@ -3311,7 +3316,9 @@ OpenTimelineGui() {
     g.canvas.OnEvent("Click", (*) => OnCanvasClick(g))
 
     advY := canvasY + 236
-    g.advancedCb := g.AddCheckbox("x14 y" advY " cFFFFFF Background25282E", "Advanced")
+    g.fakePriorityCb := g.AddCheckbox("x14 y" advY " cFFFFFF Background25282E Checked", "Fake Priority")
+    g.fakePriorityCb.OnEvent("Click", (*) => RedrawCanvas(g))
+    g.advancedCb := g.AddCheckbox("x+16 yp cFFFFFF Background25282E", "Advanced")
     g.advancedCb.OnEvent("Click", (*) => ToggleAdvanced(g))
     g.advFpsLabel := g.AddText("x+4 yp+3 cffffff Hidden", "FPS:")
     g.advFpsEdit := g.AddEdit("x+4 yp-3 w48 h22 Center Number BackgroundFFFFFF c000000 Hidden", "24")
